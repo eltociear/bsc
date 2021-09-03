@@ -98,6 +98,10 @@ type StatusPacket struct {
 	ForkID          forkid.ID
 }
 
+type UpgradeStatusPacket struct {
+	SubProtocolVersion uint32
+}
+
 // NewBlockHashesPacket is the network packet for the block announcements.
 type NewBlockHashesPacket []struct {
 	Hash   common.Hash // Hash of one particular block being announced

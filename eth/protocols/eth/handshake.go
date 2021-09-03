@@ -68,6 +68,33 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 	}
 	p.td, p.head = status.TD, status.Head
 
+	if p.version == ETH67 {
+		var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
+
+		gopool.Submit(func() {
+			errc <- p2p.Send(p.rw, StatusMsg, &UpgradeStatusPacket{
+				SubProtocolVersion: 1,
+			})
+
+			p.Log().Info("send upgrade status packet")
+		})
+		gopool.Submit(func() {
+			errc <- p.readUpgradeStatus(&upgradeStatus)
+		})
+		timeout := time.NewTimer(handshakeTimeout)
+		defer timeout.Stop()
+		for i := 0; i < 2; i++ {
+			select {
+			case err := <-errc:
+				if err != nil {
+					return err
+				}
+			case <-timeout.C:
+				return p2p.DiscReadTimeout
+			}
+		}
+	}
+
 	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
 	// larger, it will still fit within 100 bits
 	if tdlen := p.td.BitLen(); tdlen > 100 {
@@ -104,5 +131,24 @@ func (p *Peer) readStatus(network uint64, status *StatusPacket, genesis common.H
 	if err := forkFilter(status.ForkID); err != nil {
 		return fmt.Errorf("%w: %v", errForkIDRejected, err)
 	}
+	return nil
+}
+
+func (p *Peer) readUpgradeStatus(status *UpgradeStatusPacket) error {
+	msg, err := p.rw.ReadMsg()
+	if err != nil {
+		return err
+	}
+	if msg.Code != StatusMsg {
+		return fmt.Errorf("%w: first msg has code %x (!= %x)", errNoStatusMsg, msg.Code, StatusMsg)
+	}
+	if msg.Size > maxMessageSize {
+		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
+	}
+	// Decode the handshake and make sure everything matches
+	if err := msg.Decode(&status); err != nil {
+		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+	}
+	p.Log().Info("receive upgrade status packet", "sub", status.SubProtocolVersion)
 	return nil
 }
