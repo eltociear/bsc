@@ -99,7 +99,13 @@ type StatusPacket struct {
 }
 
 type UpgradeStatusPacket struct {
-	SubProtocolVersion uint32
+	SubProtocolVersion SubProtocolVersion
+}
+
+type SubProtocolVersion uint64
+
+func (v SubProtocolVersion) NeedTxsBroadcastedFromPeers() bool {
+	return v&0x1 == 0x0
 }
 
 // NewBlockHashesPacket is the network packet for the block announcements.

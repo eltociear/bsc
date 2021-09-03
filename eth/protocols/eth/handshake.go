@@ -35,7 +35,7 @@ const (
 
 // Handshake executes the eth protocol handshake, negotiating version number,
 // network IDs, difficulties, head and genesis blocks.
-func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis common.Hash, forkID forkid.ID, forkFilter forkid.Filter) error {
+func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis common.Hash, forkID forkid.ID, forkFilter forkid.Filter, subVersion uint64) error {
 	// Send out own handshake in a new thread
 	errc := make(chan error, 2)
 
@@ -73,7 +73,7 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 
 		gopool.Submit(func() {
 			errc <- p2p.Send(p.rw, StatusMsg, &UpgradeStatusPacket{
-				SubProtocolVersion: 1,
+				SubProtocolVersion: SubProtocolVersion(subVersion),
 			})
 
 			p.Log().Info("send upgrade status packet")
@@ -93,6 +93,11 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 				return p2p.DiscReadTimeout
 			}
 		}
+		p.subVersion = upgradeStatus.SubProtocolVersion
+	}
+
+	if !p.subVersion.NeedTxsBroadcastedFromPeers() {
+		p.Close()
 	}
 
 	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
